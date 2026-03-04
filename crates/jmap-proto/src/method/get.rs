@@ -7,7 +7,7 @@
 use crate::{
     object::JmapObject,
     request::{
-        IntoValid, MaybeInvalid,
+        MaybeInvalid,
         deserialize::{DeserializeArguments, deserialize_request},
         reference::{MaybeIdReference, MaybeResultReference, ResultReference},
     },
@@ -63,6 +63,10 @@ impl<I> NotFoundIds<I> {
 
     pub fn add_invalid(&mut self, strings: Vec<String>) {
         self.invalid.extend(strings);
+    }
+
+    pub fn extend(&mut self, iter: impl IntoIterator<Item = I>) {
+        self.ids.extend(iter);
     }
 }
 

@@ -55,7 +55,9 @@ impl ParticipantIdentityGet for Server {
         response.not_found.add_invalid(not_found_ids);
 
         let Some(identities) = identities else {
-            response.not_found = ids.unwrap_or_default();
+            if let Some(ids) = ids {
+                response.not_found.extend(ids);
+            }
             return Ok(response);
         };
 

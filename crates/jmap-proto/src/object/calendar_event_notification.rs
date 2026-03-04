@@ -5,6 +5,7 @@
  */
 
 use crate::{
+    method::get::NotFoundIds,
     object::{AnyId, JmapObject, JmapObjectId},
     request::{MaybeInvalid, deserialize::DeserializeArguments},
     types::{date::UTCDate, state::State},
@@ -73,7 +74,7 @@ pub struct CalendarEventNotificationGetResponse {
     pub list: Vec<CalendarEventNotificationObject>,
 
     #[serde(rename = "notFound")]
-    pub not_found: Vec<Id>,
+    pub not_found: NotFoundIds<Id>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
