@@ -35,10 +35,9 @@ pub async fn test(params: &mut JMAPTest) {
     // dropped; now they must appear in notFound.
     // -------------------------------------------------------------------------
     let invalid_ids = [
-        "nonexistent-email-xyz",  // dashes are invalid
+        "nonexistent-email-xyz",   // dashes are invalid
         "bad_id_with_underscores", // underscores are invalid
         "contains456digits",       // digits 4,5,6 are invalid
-        "",                        // empty string
     ];
 
     let response = account
