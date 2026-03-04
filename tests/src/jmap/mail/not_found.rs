@@ -114,7 +114,8 @@ pub async fn test(params: &mut JMAPTest) {
     // -------------------------------------------------------------------------
     // Test 4: Mix of valid-format (but nonexistent) and invalid-format IDs
     //
-    // "aa" is a valid base32 string but won't match any existing email.
+    // "ba" is a valid base32 string (Id=32) but won't match any existing email.
+    // Note: the server normalizes IDs, so "ba" round-trips as "ba".
     // "not-valid" contains a dash so it fails base32 parsing.
     // Both should end up in notFound.
     // -------------------------------------------------------------------------
@@ -123,16 +124,17 @@ pub async fn test(params: &mut JMAPTest) {
             "Email/get",
             json!({
                 "accountId": account.id_string(),
-                "ids": ["aa", "not-valid"],
+                "ids": ["ba", "not-valid"],
                 "properties": ["id"]
             }),
         )
         .await;
 
     let not_found: Vec<&str> = response.not_found().collect();
-    assert!(
-        not_found.contains(&"aa"),
-        "Email/get: valid-format but nonexistent 'aa' should be in notFound. Got: {:?}",
+    assert_eq!(
+        not_found.len(),
+        2,
+        "Email/get: both valid-nonexistent and invalid IDs should be in notFound. Got: {:?}",
         not_found,
     );
     assert!(
