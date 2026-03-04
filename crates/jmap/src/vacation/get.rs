@@ -62,7 +62,7 @@ impl VacationResponseGet for Server {
                 .await?
                 .into(),
             list: Vec::with_capacity(1),
-            not_found: vec![],
+            not_found: Default::default(),
         };
 
         let do_get = if let Some(MaybeResultReference::Value(ids)) = request.ids {

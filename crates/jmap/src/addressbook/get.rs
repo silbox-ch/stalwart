@@ -34,7 +34,7 @@ impl AddressBookGet for Server {
         mut request: GetRequest<addressbook::AddressBook>,
         access_token: &AccessToken,
     ) -> trc::Result<GetResponse<addressbook::AddressBook>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             AddressBookProperty::Id,
             AddressBookProperty::Name,
@@ -84,8 +84,9 @@ impl AddressBookGet for Server {
             account_id: request.account_id.into(),
             state: cache.get_state(true).into(),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
 
         for id in ids {
             // Obtain the address_book object

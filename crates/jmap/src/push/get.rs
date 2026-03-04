@@ -35,7 +35,7 @@ impl PushSubscriptionFetch for Server {
         mut request: GetRequest<push_subscription::PushSubscription>,
         access_token: &AccessToken,
     ) -> trc::Result<GetResponse<push_subscription::PushSubscription>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             PushSubscriptionProperty::Id,
             PushSubscriptionProperty::DeviceClientId,
@@ -50,8 +50,9 @@ impl PushSubscriptionFetch for Server {
             account_id: request.account_id.into(),
             state: None,
             list: Vec::new(),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
 
         let Some(subscriptions_) = self
             .store()

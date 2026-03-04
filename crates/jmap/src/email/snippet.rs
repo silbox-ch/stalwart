@@ -108,7 +108,7 @@ impl EmailSearchSnippet for Server {
         let mut response = GetSearchSnippetResponse {
             account_id: request.account_id,
             list: Vec::with_capacity(email_ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
 
         if email_ids.len() > self.core.jmap.snippet_max_results {

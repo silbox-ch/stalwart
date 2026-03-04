@@ -102,7 +102,7 @@ impl CalendarEventGet for Server {
             account_id: request.account_id.into(),
             state: cache.get_state(false).into(),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
         let mut return_converted_props = !return_all_properties;
         let mut return_is_origin = false;

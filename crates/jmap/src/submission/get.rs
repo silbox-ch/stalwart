@@ -46,7 +46,7 @@ impl EmailSubmissionGet for Server {
         &self,
         mut request: GetRequest<email_submission::EmailSubmission>,
     ) -> trc::Result<GetResponse<email_submission::EmailSubmission>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             EmailSubmissionProperty::Id,
             EmailSubmissionProperty::EmailId,
@@ -107,8 +107,9 @@ impl EmailSubmissionGet for Server {
                 .await?
                 .into(),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
 
         for id in ids {
             // Obtain the email_submission object
