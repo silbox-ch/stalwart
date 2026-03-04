@@ -7,7 +7,7 @@
 use super::crypto::{EncryptMessage, EncryptMessageError};
 use crate::{
     cache::{MessageCacheFetch, email::MessageCacheAccess, mailbox::MailboxCacheAccess},
-    mailbox::{INBOX_ID, JUNK_ID, SENT_ID, TRASH_ID, UidMailbox},
+    mailbox::{DRAFTS_ID, INBOX_ID, JUNK_ID, SENT_ID, TRASH_ID, UidMailbox},
     message::{
         crypto::EncryptionParams,
         index::{IndexMessage, extractors::VisitText},
@@ -199,11 +199,16 @@ impl EmailIngest for Server {
                 .await
                 .caused_by(trc::location!())?;
 
-            // Skip duplicate messages
+            // Skip duplicate messages, but allow delivery when the duplicate
+            // exists in Sent or Drafts (self-send via JMAP submission)
             let target_mailbox_id = params.mailbox_ids.first().copied().unwrap_or(INBOX_ID);
-            if !cache
-                .in_mailboxes(&[target_mailbox_id, JUNK_ID])
-                .any(|m| thread_result.duplicate_ids.contains(&m.document_id))
+            let in_sent_or_drafts = cache
+                .in_mailboxes(&[SENT_ID, DRAFTS_ID])
+                .any(|m| thread_result.duplicate_ids.contains(&m.document_id));
+            if !in_sent_or_drafts
+                && !cache
+                    .in_mailboxes(&[target_mailbox_id, JUNK_ID])
+                    .any(|m| thread_result.duplicate_ids.contains(&m.document_id))
             {
                 trc::event!(
                     MessageIngest(MessageIngestEvent::Duplicate),

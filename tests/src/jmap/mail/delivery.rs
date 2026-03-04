@@ -432,6 +432,67 @@ END:VCARD
         }
     }
 
+    // Test self-send deduplication: an email already present in Sent
+    // (from JMAP Email/set before submission) should not block SMTP
+    // delivery to Inbox. This is a regression test for the bug where
+    // sending an email to yourself via JMAP silently failed because the
+    // deduplication logic treated the copy in Sent as a duplicate.
+    let prev_inbox_count = server
+        .get_cached_messages(john.id().document_id())
+        .await
+        .unwrap()
+        .in_mailbox(INBOX_ID)
+        .count();
+
+    // Step 1: Import email to Sent (simulates JMAP Email/set + onSuccessUpdateEmail)
+    john.client()
+        .email_import(
+            concat!(
+                "From: jdoe@example.com\r\n",
+                "To: jdoe@example.com\r\n",
+                "Message-ID: <self-send-dedup-test@example.com>\r\n",
+                "Subject: Self-send dedup test\r\n",
+                "\r\n",
+                "This email should be delivered to Inbox despite existing in Sent."
+            )
+            .as_bytes()
+            .to_vec(),
+            vec![Id::from(SENT_ID).to_string()],
+            None::<Vec<String>>,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Step 2: Deliver same email via LMTP (simulates queue local delivery)
+    lmtp.ingest(
+        "jdoe@example.com",
+        &["jdoe@example.com"],
+        concat!(
+            "From: jdoe@example.com\r\n",
+            "To: jdoe@example.com\r\n",
+            "Message-ID: <self-send-dedup-test@example.com>\r\n",
+            "Subject: Self-send dedup test\r\n",
+            "\r\n",
+            "This email should be delivered to Inbox despite existing in Sent."
+        ),
+    )
+    .await;
+
+    // Step 3: Verify the email was delivered to Inbox
+    let john_cache = server
+        .get_cached_messages(john.id().document_id())
+        .await
+        .unwrap();
+    let new_inbox_count = john_cache.in_mailbox(INBOX_ID).count();
+    assert_eq!(
+        new_inbox_count,
+        prev_inbox_count + 1,
+        "Self-addressed email should be delivered to Inbox (was {} now {})",
+        prev_inbox_count,
+        new_inbox_count,
+    );
+
     // Remove test data
     for account in [john, jane, bill] {
         params.destroy_all_mailboxes(account).await;
