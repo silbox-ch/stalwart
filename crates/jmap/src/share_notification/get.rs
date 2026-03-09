@@ -106,7 +106,7 @@ impl ShareNotificationGet for Server {
             account_id: request.account_id.into(),
             state: None,
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
         let mut notifications = Vec::new();
 

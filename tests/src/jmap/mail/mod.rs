@@ -12,6 +12,7 @@ pub mod crypto;
 pub mod delivery;
 pub mod get;
 pub mod mailbox;
+pub mod not_found;
 pub mod parse;
 pub mod query;
 pub mod query_changes;

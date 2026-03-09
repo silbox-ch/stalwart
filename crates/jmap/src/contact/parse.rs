@@ -42,7 +42,7 @@ impl ContactCardParse for Server {
             account_id: request.account_id,
             parsed: VecMap::with_capacity(request.blob_ids.len()),
             not_parsable: vec![],
-            not_found: vec![],
+            not_found: Default::default(),
         };
 
         for blob_id in request.blob_ids.into_valid() {

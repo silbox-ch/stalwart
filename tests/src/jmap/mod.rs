@@ -78,6 +78,7 @@ async fn jmap_tests() {
 
     server::webhooks::test(&mut params).await;
 
+    mail::not_found::test(&mut params).await;
     mail::get::test(&mut params).await;
     mail::set::test(&mut params).await;
     mail::parse::test(&mut params).await;

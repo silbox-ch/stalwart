@@ -29,7 +29,7 @@ impl QuotaGet for Server {
         mut request: GetRequest<Quota>,
         access_token: &AccessToken,
     ) -> trc::Result<GetResponse<Quota>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             QuotaProperty::Id,
             QuotaProperty::ResourceType,
@@ -57,8 +57,9 @@ impl QuotaGet for Server {
             account_id: request.account_id.into(),
             state: State::Initial.into(),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
 
         let access_token = if account_id == access_token.primary_id() {
             AccessTokenRef::Borrowed(access_token)

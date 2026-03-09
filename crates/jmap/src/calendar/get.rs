@@ -41,7 +41,7 @@ impl CalendarGet for Server {
         mut request: GetRequest<calendar::Calendar>,
         access_token: &AccessToken,
     ) -> trc::Result<GetResponse<calendar::Calendar>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             CalendarProperty::Id,
             CalendarProperty::Name,
@@ -94,8 +94,9 @@ impl CalendarGet for Server {
             account_id: request.account_id.into(),
             state: cache.get_state(true).into(),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
 
         for id in ids {
             // Obtain the calendar object

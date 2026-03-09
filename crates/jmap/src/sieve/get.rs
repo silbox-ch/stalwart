@@ -33,7 +33,7 @@ impl SieveScriptGet for Server {
         &self,
         mut request: GetRequest<Sieve>,
     ) -> trc::Result<GetResponse<Sieve>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             SieveProperty::Id,
             SieveProperty::Name,
@@ -60,8 +60,9 @@ impl SieveScriptGet for Server {
                 .await?
                 .into(),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
         let active_script_id = self.sieve_script_get_active_id(account_id).await?;
 
         for id in ids {

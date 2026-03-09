@@ -31,7 +31,7 @@ impl MailboxGet for Server {
         mut request: GetRequest<Mailbox>,
         access_token: &AccessToken,
     ) -> trc::Result<GetResponse<Mailbox>> {
-        let ids = request.unwrap_ids(self.core.jmap.get_max_objects)?;
+        let (ids, not_found_ids) = request.unwrap_ids(self.core.jmap.get_max_objects)?;
         let properties = request.unwrap_properties(&[
             MailboxProperty::Id,
             MailboxProperty::Name,
@@ -69,8 +69,9 @@ impl MailboxGet for Server {
             account_id: request.account_id.into(),
             state: Some(cache.mailboxes.change_id.into()),
             list: Vec::with_capacity(ids.len()),
-            not_found: vec![],
+            not_found: Default::default(),
         };
+        response.not_found.add_invalid(not_found_ids);
 
         for id in ids {
             // Obtain the mailbox object

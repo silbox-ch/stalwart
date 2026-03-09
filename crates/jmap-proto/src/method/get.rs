@@ -7,14 +7,14 @@
 use crate::{
     object::JmapObject,
     request::{
-        IntoValid, MaybeInvalid,
+        MaybeInvalid,
         deserialize::{DeserializeArguments, deserialize_request},
         reference::{MaybeIdReference, MaybeResultReference, ResultReference},
     },
     types::state::State,
 };
 use jmap_tools::Value;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, ser::SerializeSeq};
 use types::id::Id;
 
 #[derive(Debug, Clone)]
@@ -37,7 +37,59 @@ pub struct GetResponse<T: JmapObject> {
     pub list: Vec<Value<'static, T::Property, T::Element>>,
 
     #[serde(rename = "notFound")]
-    pub not_found: Vec<T::Id>,
+    pub not_found: NotFoundIds<T::Id>,
+}
+
+/// Holds both parsed IDs (that were valid but not found in the store)
+/// and unparseable ID strings (that could not be decoded as server IDs).
+/// Serializes as a single flat JSON array, per JMAP spec RFC 8620 §5.1.
+#[derive(Debug, Clone)]
+pub struct NotFoundIds<I> {
+    ids: Vec<I>,
+    invalid: Vec<String>,
+}
+
+impl<I> NotFoundIds<I> {
+    pub fn new() -> Self {
+        Self {
+            ids: Vec::new(),
+            invalid: Vec::new(),
+        }
+    }
+
+    pub fn push(&mut self, id: I) {
+        self.ids.push(id);
+    }
+
+    pub fn add_invalid(&mut self, strings: Vec<String>) {
+        self.invalid.extend(strings);
+    }
+
+    pub fn extend(&mut self, iter: impl IntoIterator<Item = I>) {
+        self.ids.extend(iter);
+    }
+}
+
+impl<I> Default for NotFoundIds<I> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<I: serde::Serialize> serde::Serialize for NotFoundIds<I> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.ids.len() + self.invalid.len()))?;
+        for id in &self.ids {
+            seq.serialize_element(id)?;
+        }
+        for s in &self.invalid {
+            seq.serialize_element(s)?;
+        }
+        seq.end()
+    }
 }
 
 impl<'de, T: JmapObject> DeserializeArguments<'de> for GetRequest<T> {
@@ -116,16 +168,29 @@ impl<T: JmapObject> GetRequest<T> {
         }
     }
 
-    pub fn unwrap_ids(&mut self, max_objects_in_get: usize) -> trc::Result<Option<Vec<T::Id>>> {
+    pub fn unwrap_ids(
+        &mut self,
+        max_objects_in_get: usize,
+    ) -> trc::Result<(Option<Vec<T::Id>>, Vec<String>)> {
         if let Some(ids) = self.ids.take() {
             let ids = ids.unwrap();
             if ids.len() <= max_objects_in_get {
-                Ok(Some(ids.into_valid().collect::<Vec<_>>()))
+                let mut valid = Vec::new();
+                let mut invalid = Vec::new();
+                for id in ids {
+                    match id {
+                        MaybeIdReference::Id(id) => valid.push(id),
+                        MaybeIdReference::Reference(s) | MaybeIdReference::Invalid(s) => {
+                            invalid.push(s);
+                        }
+                    }
+                }
+                Ok((Some(valid), invalid))
             } else {
                 Err(trc::JmapEvent::RequestTooLarge.into_err())
             }
         } else {
-            Ok(None)
+            Ok((None, Vec::new()))
         }
     }
 }
