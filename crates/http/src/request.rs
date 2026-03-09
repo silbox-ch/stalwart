@@ -621,6 +621,34 @@ impl ParseHttp for Server {
                 }
                 _ => (),
             },
+            #[cfg(not(feature = "enterprise"))]
+            "logo.svg" => {
+                self.is_http_anonymous_request_allowed(&session.remote_ip)
+                    .await?;
+                match self
+                    .resolve_logo(
+                        req.headers()
+                            .get(header::HOST)
+                            .and_then(|h| h.to_str().ok())
+                            .map(|h| h.rsplit_once(':').map_or(h, |(h, _)| h))
+                            .unwrap_or_default(),
+                    )
+                    .await
+                {
+                    Ok(Some(resource)) => {
+                        return Ok(resource.into_http_response());
+                    }
+                    Ok(None) => (),
+                    Err(err) => {
+                        trc::error!(err.span_id(session.session_id));
+                    }
+                }
+
+                let resource = self.inner.data.webadmin.get("logo.svg").await?;
+                if !resource.is_empty() {
+                    return Ok(resource.into_http_response());
+                }
+            }
             // SPDX-SnippetBegin
             // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
             // SPDX-License-Identifier: LicenseRef-SEL

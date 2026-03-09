@@ -81,6 +81,11 @@ pub struct JmapConfig {
     pub encrypt: bool,
     pub encrypt_append: bool,
 
+    #[cfg(not(feature = "enterprise"))]
+    pub undelete_retention: Option<Duration>,
+    #[cfg(not(feature = "enterprise"))]
+    pub branding_logo_url: Option<String>,
+
     pub index_batch_size: usize,
     pub index_fields: AHashMap<SearchIndex, AHashSet<SearchField>>,
 
@@ -315,6 +320,14 @@ impl JmapConfig {
             encrypt_append: config
                 .property_or_default("email.encryption.append", "false")
                 .unwrap_or(false),
+            #[cfg(not(feature = "enterprise"))]
+            undelete_retention: config
+                .property_or_default::<Option<Duration>>("storage.undelete.retention", "false")
+                .unwrap_or_default(),
+            #[cfg(not(feature = "enterprise"))]
+            branding_logo_url: config
+                .value("branding.logo-url")
+                .map(|s| s.to_string()),
             http_use_forwarded: config.property("http.use-x-forwarded").unwrap_or(false),
             http_headers,
             push_attempt_interval: config

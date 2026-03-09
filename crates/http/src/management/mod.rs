@@ -17,6 +17,9 @@ pub mod spam;
 pub mod stores;
 pub mod troubleshoot;
 
+#[cfg(not(feature = "enterprise"))]
+pub mod undelete;
+
 // SPDX-SnippetBegin
 // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
 // SPDX-License-Identifier: LicenseRef-SEL

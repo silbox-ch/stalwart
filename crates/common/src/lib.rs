@@ -61,6 +61,11 @@ pub mod sharing;
 pub mod storage;
 pub mod telemetry;
 
+#[cfg(not(feature = "enterprise"))]
+pub mod branding;
+#[cfg(not(feature = "enterprise"))]
+pub mod undelete;
+
 // SPDX-SnippetBegin
 // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
 // SPDX-License-Identifier: LicenseRef-SEL
