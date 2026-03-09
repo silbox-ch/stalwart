@@ -42,6 +42,10 @@ impl FileNodeGet for Server {
             FileNodeProperty::Name,
             FileNodeProperty::ParentId,
             FileNodeProperty::Size,
+            FileNodeProperty::BlobId,
+            FileNodeProperty::Type,
+            FileNodeProperty::Created,
+            FileNodeProperty::Modified,
         ]);
         let account_id = request.account_id.document_id();
         let cache = self
