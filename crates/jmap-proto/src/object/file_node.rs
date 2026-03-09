@@ -151,6 +151,7 @@ impl FileNodeProperty {
             b"size" => FileNodeProperty::Size,
             b"name" => FileNodeProperty::Name,
             b"type" => FileNodeProperty::Type,
+            b"contentType" => FileNodeProperty::Type,
             b"created" => FileNodeProperty::Created,
             b"modified" => FileNodeProperty::Modified,
             b"accessed" => FileNodeProperty::Accessed,
