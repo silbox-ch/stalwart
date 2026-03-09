@@ -134,8 +134,7 @@ impl UndeleteHandler for Server {
                 if requests.is_empty() {
                     // Empty body → restore all
                     let deleted = self.list_deleted_items(account_id).await?;
-                    return self
-                        .restore_all(account_id, deleted, session.session_id)
+                    return restore_all(self, account_id, deleted, session.session_id)
                         .await;
                 }
 
@@ -254,105 +253,104 @@ impl UndeleteHandler for Server {
     }
 }
 
-impl Server {
-    /// Restore all deleted items for an account (empty POST body).
-    async fn restore_all(
-        &self,
-        account_id: u32,
-        deleted: Vec<common::undelete::DeletedBlob>,
-        session_id: u64,
-    ) -> trc::Result<HttpResponse> {
-        let access_token = self
-            .get_access_token(account_id)
-            .await
-            .caused_by(trc::location!())?;
+/// Restore all deleted items for an account (empty POST body).
+async fn restore_all(
+    server: &Server,
+    account_id: u32,
+    deleted: Vec<common::undelete::DeletedBlob>,
+    session_id: u64,
+) -> trc::Result<HttpResponse> {
+    let access_token = server
+        .get_access_token(account_id)
+        .await
+        .caused_by(trc::location!())?;
 
-        let mut results = Vec::with_capacity(deleted.len());
-        let mut batch = BatchBuilder::new();
-        batch.with_account_id(account_id);
+    let mut results = Vec::with_capacity(deleted.len());
+    let mut batch = BatchBuilder::new();
+    batch.with_account_id(account_id);
 
-        for blob in deleted {
-            // Only restore emails for now
-            if blob.item.collection != types::collection::Collection::Email as u8 {
-                results.push(RestoreResponse::Error {
-                    reason: "Unsupported collection".to_string(),
-                });
-                continue;
-            }
+    for blob in deleted {
+        // Only restore emails for now
+        if blob.item.collection != types::collection::Collection::Email as u8 {
+            results.push(RestoreResponse::Error {
+                reason: "Unsupported collection".to_string(),
+            });
+            continue;
+        }
 
-            match self
-                .blob_store()
-                .get_blob(blob.hash.as_slice(), 0..usize::MAX)
-                .await?
-            {
-                Some(bytes) => {
-                    match self
-                        .email_ingest(IngestEmail {
-                            raw_message: &bytes,
-                            message: MessageParser::new().parse(&bytes),
-                            blob_hash: Some(&blob.hash),
-                            access_token: access_token.as_ref(),
-                            mailbox_ids: vec![INBOX_ID],
-                            keywords: vec![],
-                            received_at: Some(blob.item.deleted_at),
-                            source: IngestSource::Restore,
-                            session_id,
-                        })
-                        .await
-                    {
-                        Ok(_) => {
-                            results.push(RestoreResponse::Success);
-                            batch
-                                .clear(BlobOp::Link {
-                                    hash: blob.hash.clone(),
-                                    to: BlobLink::Temporary {
-                                        until: blob.expires_at,
-                                    },
-                                })
-                                .clear(BlobOp::Undelete {
-                                    hash: blob.hash,
+        match server
+            .blob_store()
+            .get_blob(blob.hash.as_slice(), 0..usize::MAX)
+            .await?
+        {
+            Some(bytes) => {
+                match server
+                    .email_ingest(IngestEmail {
+                        raw_message: &bytes,
+                        message: MessageParser::new().parse(&bytes),
+                        blob_hash: Some(&blob.hash),
+                        access_token: access_token.as_ref(),
+                        mailbox_ids: vec![INBOX_ID],
+                        keywords: vec![],
+                        received_at: Some(blob.item.deleted_at),
+                        source: IngestSource::Restore,
+                        session_id,
+                    })
+                    .await
+                {
+                    Ok(_) => {
+                        results.push(RestoreResponse::Success);
+                        batch
+                            .clear(BlobOp::Link {
+                                hash: blob.hash.clone(),
+                                to: BlobLink::Temporary {
                                     until: blob.expires_at,
-                                });
-                        }
-                        Err(mut err)
-                            if err.matches(trc::EventType::MessageIngest(
-                                trc::MessageIngestEvent::Error,
-                            )) =>
-                        {
-                            results.push(RestoreResponse::Error {
-                                reason: err
-                                    .take_value(trc::Key::Reason)
-                                    .and_then(|v| v.into_string())
-                                    .unwrap_or_default()
-                                    .to_string(),
+                                },
+                            })
+                            .clear(BlobOp::Undelete {
+                                hash: blob.hash,
+                                until: blob.expires_at,
                             });
-                        }
-                        Err(err) => {
-                            return Err(err.caused_by(trc::location!()));
-                        }
+                    }
+                    Err(mut err)
+                        if err.matches(trc::EventType::MessageIngest(
+                            trc::MessageIngestEvent::Error,
+                        )) =>
+                    {
+                        results.push(RestoreResponse::Error {
+                            reason: err
+                                .take_value(trc::Key::Reason)
+                                .and_then(|v| v.into_string())
+                                .unwrap_or_default()
+                                .to_string(),
+                        });
+                    }
+                    Err(err) => {
+                        return Err(err.caused_by(trc::location!()));
                     }
                 }
-                None => {
-                    results.push(RestoreResponse::NotFound);
-                }
+            }
+            None => {
+                results.push(RestoreResponse::NotFound);
             }
         }
-
-        // Commit batch (undelete marker cleanup)
-        if !batch.is_empty() {
-            self.core
-                .storage
-                .data
-                .write(batch.build_all())
-                .await
-                .caused_by(trc::location!())?;
-        }
-
-        Ok(JsonResponse::new(json!({
-            "data": results,
-        }))
-        .into_http_response())
     }
+
+    // Commit batch (undelete marker cleanup)
+    if !batch.is_empty() {
+        server
+            .core
+            .storage
+            .data
+            .write(batch.build_all())
+            .await
+            .caused_by(trc::location!())?;
+    }
+
+    Ok(JsonResponse::new(json!({
+        "data": results,
+    }))
+    .into_http_response())
 }
 
 fn collection_name(collection: u8) -> &'static str {
