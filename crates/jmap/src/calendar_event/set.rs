@@ -838,18 +838,24 @@ fn update_calendar_event<'x>(
                     for (_, participant) in values.iter_mut() {
                         if let Some(obj) = participant.as_object_mut() {
                             if obj.get(&cal_addr_key).is_none() {
-                                if let Some(Value::Object(send_to)) =
-                                    obj.get(&send_to_key)
-                                {
-                                    if let Some((_, Value::Str(uri))) =
-                                        send_to.iter().next()
-                                    {
-                                        let uri = uri.clone();
-                                        obj.insert(
-                                            JSCalendarProperty::CalendarAddress,
-                                            Value::Str(uri),
-                                        );
-                                    }
+                                // Extract sendTo URI into an owned value first
+                                // to satisfy the borrow checker.
+                                let send_to_uri = obj
+                                    .get(&send_to_key)
+                                    .and_then(|v| v.as_object())
+                                    .and_then(|st| st.iter().next())
+                                    .and_then(|(_, v)| {
+                                        if let Value::Str(uri) = v {
+                                            Some(uri.clone())
+                                        } else {
+                                            None
+                                        }
+                                    });
+                                if let Some(uri) = send_to_uri {
+                                    obj.insert(
+                                        JSCalendarProperty::CalendarAddress,
+                                        Value::Str(uri),
+                                    );
                                 }
                             }
                         }

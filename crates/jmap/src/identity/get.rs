@@ -57,11 +57,16 @@ impl IdentityGet for Server {
         let ids = if let Some(ids) = ids {
             ids
         } else {
-            identity_ids
+            // Iterate in descending document_id order so the primary
+            // identity (which receives the highest document_id during
+            // auto-creation) appears first in the response.
+            let mut v: Vec<_> = identity_ids
                 .iter()
                 .take(self.core.jmap.get_max_objects)
                 .map(Into::into)
-                .collect::<Vec<_>>()
+                .collect();
+            v.reverse();
+            v
         };
         let mut response = GetResponse {
             account_id: request.account_id.into(),
