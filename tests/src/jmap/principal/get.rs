@@ -43,7 +43,7 @@ pub async fn test(params: &mut JMAPTest) {
         "urn:ietf:params:jmap:calendars:parse": {},
         "urn:ietf:params:jmap:contacts": {},
         "urn:ietf:params:jmap:contacts:parse": {},
-        "urn:ietf:params:jmap:filenode": {},
+        "urn:ietf:params:jmap:filestorage": {},
         "urn:ietf:params:jmap:principals": {},
         "urn:ietf:params:jmap:principals:availability": {},
         "urn:ietf:params:jmap:submission": {},
@@ -191,7 +191,7 @@ pub async fn test(params: &mut JMAPTest) {
             "urn:ietf:params:jmap:principals:availability": {
               "maxAvailabilityDuration": "P52W1D",
             },
-            "urn:ietf:params:jmap:filenode": {
+            "urn:ietf:params:jmap:filestorage": {
               "maxFileNodeDepth": null,
               "maxSizeFileNodeName": 255,
               "fileNodeQuerySortOptions": [],
@@ -214,7 +214,7 @@ pub async fn test(params: &mut JMAPTest) {
         "urn:ietf:params:jmap:quota": john_id,
         "urn:ietf:params:jmap:principals": john_id,
         "urn:ietf:params:jmap:principals:availability": john_id,
-        "urn:ietf:params:jmap:filenode": john_id
+        "urn:ietf:params:jmap:filestorage": john_id
       },
       "username": "jdoe@example.com",
       "apiUrl": "https://127.0.0.1:8899/jmap/",
@@ -296,7 +296,7 @@ pub async fn test(params: &mut JMAPTest) {
         "urn:ietf:params:jmap:mail": {},
         "urn:ietf:params:jmap:contacts": {},
         "urn:ietf:params:jmap:calendars": {},
-        "urn:ietf:params:jmap:filenode": {},
+        "urn:ietf:params:jmap:filestorage": {},
         "urn:ietf:params:jmap:principals": {}
       },
       "accounts": {
@@ -309,7 +309,7 @@ pub async fn test(params: &mut JMAPTest) {
             "mayShareWith": true,
             "calendarAddress": "mailto:jdoe@example.com"
           },
-          "urn:ietf:params:jmap:filenode": {},
+          "urn:ietf:params:jmap:filestorage": {},
           "urn:ietf:params:jmap:principals": {},
           "urn:ietf:params:jmap:principals:owner": {
             "accountIdForPrincipal": john_id,
@@ -329,7 +329,7 @@ pub async fn test(params: &mut JMAPTest) {
         "urn:ietf:params:jmap:mail": {},
         "urn:ietf:params:jmap:contacts": {},
         "urn:ietf:params:jmap:calendars": {},
-        "urn:ietf:params:jmap:filenode": {},
+        "urn:ietf:params:jmap:filestorage": {},
         "urn:ietf:params:jmap:principals": {}
       },
       "accounts": {
@@ -342,7 +342,7 @@ pub async fn test(params: &mut JMAPTest) {
             "mayShareWith": true,
             "calendarAddress": "mailto:jane.smith@example.com"
           },
-          "urn:ietf:params:jmap:filenode": {},
+          "urn:ietf:params:jmap:filestorage": {},
           "urn:ietf:params:jmap:principals": {},
           "urn:ietf:params:jmap:principals:owner": {
             "accountIdForPrincipal": jane_id,
@@ -362,7 +362,7 @@ pub async fn test(params: &mut JMAPTest) {
         "urn:ietf:params:jmap:mail": {},
         "urn:ietf:params:jmap:contacts": {},
         "urn:ietf:params:jmap:calendars": {},
-        "urn:ietf:params:jmap:filenode": {},
+        "urn:ietf:params:jmap:filestorage": {},
         "urn:ietf:params:jmap:principals": {}
       },
       "accounts": {
@@ -375,7 +375,7 @@ pub async fn test(params: &mut JMAPTest) {
             "mayShareWith": true,
             "calendarAddress": "mailto:bill@example.com"
           },
-          "urn:ietf:params:jmap:filenode": {},
+          "urn:ietf:params:jmap:filestorage": {},
           "urn:ietf:params:jmap:principals": {},
           "urn:ietf:params:jmap:principals:owner": {
             "accountIdForPrincipal": bill_id,
@@ -395,7 +395,7 @@ pub async fn test(params: &mut JMAPTest) {
         "urn:ietf:params:jmap:mail": {},
         "urn:ietf:params:jmap:contacts": {},
         "urn:ietf:params:jmap:calendars": {},
-        "urn:ietf:params:jmap:filenode": {},
+        "urn:ietf:params:jmap:filestorage": {},
         "urn:ietf:params:jmap:principals": {}
       },
       "accounts": {
@@ -408,7 +408,7 @@ pub async fn test(params: &mut JMAPTest) {
             "mayShareWith": true,
             "calendarAddress": "mailto:sales@example.com"
           },
-          "urn:ietf:params:jmap:filenode": {},
+          "urn:ietf:params:jmap:filestorage": {},
           "urn:ietf:params:jmap:principals": {},
           "urn:ietf:params:jmap:principals:owner": {
             "accountIdForPrincipal": sales_id,
