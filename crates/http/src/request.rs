@@ -21,12 +21,13 @@ use crate::{
 };
 use common::{
     Inner, KV_ACME, Server,
-    auth::{AccessToken, oauth::GrantType},
+    auth::{AccessToken, AuthRequest, oauth::GrantType},
     core::BuildServer,
     ipc::PushEvent,
     listener::{SessionData, SessionManager, SessionStream},
     manager::webadmin::Resource,
 };
+use mail_send::Credentials;
 use dav::{DavMethod, request::DavRequestHandler};
 use directory::Permission;
 use groupware::{DavResourceName, calendar::itip::ItipIngest};
@@ -181,9 +182,49 @@ impl ParseHttp for Server {
                         }
                     }
                     ("eventsource", &Method::GET) => {
-                        // Authenticate request
+                        // Authenticate request.
+                        // Try Authorization header first, then fall back to query
+                        // parameter. The browser EventSource API does not support
+                        // custom headers, so JMAP clients pass the Bearer token as
+                        // ?access_token= (per RFC 6750 §2.3).
                         let (_in_flight, access_token) =
-                            self.authenticate_headers(&req, &session, false).await?;
+                            match self.authenticate_headers(&req, &session, false).await
+                            {
+                                Ok(result) => result,
+                                Err(err)
+                                    if err.matches(trc::EventType::Auth(
+                                        trc::AuthEvent::Failed,
+                                    )) =>
+                                {
+                                    let params = UrlParams::new(req.uri().query());
+                                    let token = params
+                                        .get("access_token")
+                                        .ok_or_else(|| {
+                                            trc::AuthEvent::Failed
+                                                .into_err()
+                                                .details(
+                                                    "Missing Authorization header \
+                                                     or access_token query parameter.",
+                                                )
+                                                .caused_by(trc::location!())
+                                        })?;
+
+                                    let access_token = self
+                                        .authenticate(
+                                            &AuthRequest::from_credentials(
+                                                Credentials::OAuthBearer {
+                                                    token: token.to_string(),
+                                                },
+                                                session.session_id,
+                                                session.remote_ip,
+                                            ),
+                                        )
+                                        .await?;
+
+                                    (None, access_token)
+                                }
+                                Err(err) => return Err(err),
+                            };
 
                         return self.handle_event_source(req, access_token).await;
                     }
