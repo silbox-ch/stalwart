@@ -807,7 +807,7 @@ fn update_calendar_event<'x>(
             }
             (
                 property @ (JSCalendarProperty::Locations | JSCalendarProperty::Participants),
-                Value::Object(values),
+                Value::Object(mut values),
             ) => {
                 for (_, value) in values.iter() {
                     if let Some(values) = value
@@ -826,6 +826,36 @@ fn update_calendar_event<'x>(
                         }
                     }
                 }
+
+                // Auto-populate calendarAddress from sendTo for participants
+                // that are missing it. The calcard crate requires calendarAddress
+                // to generate ATTENDEE entries in iCalendar; without it,
+                // participants are silently dropped during the JSCal→iCal export.
+                if matches!(property, JSCalendarProperty::Participants) {
+                    let cal_addr_key =
+                        Key::Property(JSCalendarProperty::CalendarAddress);
+                    let send_to_key = Key::Property(JSCalendarProperty::SendTo);
+                    for (_, participant) in values.iter_mut() {
+                        if let Some(obj) = participant.as_object_mut() {
+                            if obj.get(&cal_addr_key).is_none() {
+                                if let Some(Value::Object(send_to)) =
+                                    obj.get(&send_to_key)
+                                {
+                                    if let Some((_, Value::Str(uri))) =
+                                        send_to.iter().next()
+                                    {
+                                        let uri = uri.clone();
+                                        obj.insert(
+                                            JSCalendarProperty::CalendarAddress,
+                                            Value::Str(uri),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 entries.insert(property, Value::Object(values));
             }
             (property, value) => {
