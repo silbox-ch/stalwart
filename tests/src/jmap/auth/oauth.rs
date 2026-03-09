@@ -218,6 +218,74 @@ pub async fn test(params: &mut JMAPTest) {
         .await;
     pop3.assert_read(pop::ResponseType::Ok).await;
 
+    // Try EventSource with Bearer token in query parameter.
+    // The browser EventSource API does not support custom headers,
+    // so JMAP clients pass the token as ?access_token= (RFC 6750 §2.3).
+    let es_response = reqwest::Client::builder()
+        .timeout(Duration::from_millis(2000))
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default()
+        .get(format!(
+            "https://127.0.0.1:8899/jmap/eventsource/\
+             ?types=*&closeafter=state&ping=1&access_token={}",
+            token
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        es_response.status(),
+        200,
+        "EventSource with ?access_token= should return 200"
+    );
+    assert!(
+        es_response
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("text/event-stream"),
+        "EventSource should return text/event-stream"
+    );
+
+    // Verify that EventSource without any auth returns 401
+    let es_noauth = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default()
+        .get(
+            "https://127.0.0.1:8899/jmap/eventsource/\
+             ?types=*&closeafter=state&ping=1",
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        es_noauth.status(),
+        401,
+        "EventSource without auth should return 401"
+    );
+
+    // Verify that EventSource with invalid token returns 401
+    let es_badtoken = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default()
+        .get(
+            "https://127.0.0.1:8899/jmap/eventsource/\
+             ?types=*&closeafter=state&ping=1&access_token=invalid_token",
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        es_badtoken.status(),
+        401,
+        "EventSource with invalid token should return 401"
+    );
+
     // ------------------------
     // Device code flow
     // ------------------------
