@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-SEL
  */
 
-use common::{Server, auth::AccessToken};
+use common::Server;
 use directory::backend::internal::manage;
 use email::message::crypto::{
     ENCRYPT_TRAIN_SPAM_FILTER, EncryptMessage, EncryptMessageError, EncryptionMethod,
@@ -14,7 +14,7 @@ use http_proto::*;
 use mail_builder::encoders::base64::base64_encode_mime;
 use mail_parser::MessageParser;
 use serde_json::json;
-use std::{future::Future, sync::Arc};
+use std::future::Future;
 use store::{
     Deserialize, Serialize, ValueKey,
     write::{AlignedBytes, Archive, Archiver, BatchBuilder},
@@ -25,22 +25,22 @@ use types::{collection::Collection, field::PrincipalField};
 pub trait CryptoHandler: Sync + Send {
     fn handle_crypto_get(
         &self,
-        access_token: Arc<AccessToken>,
+        account_id: u32,
     ) -> impl Future<Output = trc::Result<HttpResponse>> + Send;
 
     fn handle_crypto_post(
         &self,
-        access_token: Arc<AccessToken>,
+        account_id: u32,
         body: Option<Vec<u8>>,
     ) -> impl Future<Output = trc::Result<HttpResponse>> + Send;
 }
 
 impl CryptoHandler for Server {
-    async fn handle_crypto_get(&self, access_token: Arc<AccessToken>) -> trc::Result<HttpResponse> {
+    async fn handle_crypto_get(&self, account_id: u32) -> trc::Result<HttpResponse> {
         let ec = if let Some(params_) = self
             .store()
             .get_value::<Archive<AlignedBytes>>(ValueKey::property(
-                access_token.primary_id(),
+                account_id,
                 Collection::Principal,
                 0,
                 PrincipalField::EncryptionKeys,
@@ -83,7 +83,7 @@ impl CryptoHandler for Server {
 
     async fn handle_crypto_post(
         &self,
-        access_token: Arc<AccessToken>,
+        account_id: u32,
         body: Option<Vec<u8>>,
     ) -> trc::Result<HttpResponse> {
         let request = serde_json::from_slice::<EncryptionType>(body.as_deref().unwrap_or_default())
@@ -104,7 +104,7 @@ impl CryptoHandler for Server {
                 // Disable encryption at rest
                 let mut batch = BatchBuilder::new();
                 batch
-                    .with_account_id(access_token.primary_id())
+                    .with_account_id(account_id)
                     .with_collection(Collection::Principal)
                     .with_document(0)
                     .clear(PrincipalField::EncryptionKeys);
@@ -159,7 +159,7 @@ impl CryptoHandler for Server {
         // Save encryption params
         let mut batch = BatchBuilder::new();
         batch
-            .with_account_id(access_token.primary_id())
+            .with_account_id(account_id)
             .with_collection(Collection::Principal)
             .with_document(0)
             .set(PrincipalField::EncryptionKeys, params);

@@ -95,6 +95,7 @@ async fn jmap_tests() {
     mail::vacation_response::test(&mut params).await;
     mail::submission::test(&mut params).await;
     mail::crypto::test(&mut params).await;
+    mail::crypto::test_admin_crypto_impersonation(&mut params).await;
     mail::antispam::test(&mut params).await;
 
     core::event_source::test(&mut params).await;
