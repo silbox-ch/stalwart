@@ -84,6 +84,15 @@ pub trait ManagementApi: Sync + Send {
         access_token: Arc<AccessToken>,
         session: &HttpSessionData,
     ) -> impl Future<Output = trc::Result<HttpResponse>> + Send;
+
+    /// Resolve the target account ID for crypto operations.
+    /// If `?account=email` query parameter is present, resolve the email to an account ID
+    /// and require `Permission::Impersonate`. Otherwise, use the caller's own account.
+    fn resolve_crypto_account_id(
+        &self,
+        req: &HttpRequest,
+        access_token: &AccessToken,
+    ) -> impl Future<Output = trc::Result<u32>> + Send;
 }
 
 impl ManagementApi for Server {
@@ -207,12 +216,7 @@ impl ManagementApi for Server {
             _ => Err(trc::ResourceEvent::NotFound.into_err()),
         }
     }
-}
 
-impl Server {
-    /// Resolve the target account ID for crypto operations.
-    /// If `?account=email` query parameter is present, resolve the email to an account ID
-    /// and require `Permission::Impersonate`. Otherwise, use the caller's own account.
     async fn resolve_crypto_account_id(
         &self,
         req: &HttpRequest,
