@@ -632,6 +632,74 @@ async fn delete_email_metadata(
                 .caused_by(trc::location!())?;
             metadata.unindex(batch);
 
+            // Hold blob for undeletion (AGPL)
+            #[cfg(not(feature = "enterprise"))]
+            {
+                use common::undelete::DeletedItem;
+                use email::message::metadata::ArchivedMetadataHeaderName;
+                use store::{
+                    Serialize,
+                    write::{Archiver, BlobLink, BlobOp, now},
+                };
+
+                if let Some(retention) = &server.core.jmap.undelete_retention {
+                    let root_part = metadata.root_part();
+                    let from = root_part.headers.iter().find_map(|h| {
+                        if let ArchivedMetadataHeaderName::From = &h.name {
+                            h.value.as_single_address().and_then(|addr| {
+                                match (addr.address.as_ref(), addr.name.as_ref()) {
+                                    (Some(address), Some(name)) => {
+                                        Some(format!("{} <{}>", name, address))
+                                    }
+                                    (Some(address), None) => Some(address.as_ref().to_string()),
+                                    (None, Some(name)) => Some(name.as_ref().to_string()),
+                                    (None, None) => None,
+                                }
+                            })
+                        } else {
+                            None
+                        }
+                    });
+                    let subject = root_part.headers.iter().rev().find_map(|h| {
+                        if let ArchivedMetadataHeaderName::Subject = &h.name {
+                            h.value.as_text().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    });
+                    let description = format!(
+                        "From: {}, Subject: {}",
+                        from.as_deref().unwrap_or("(unknown)"),
+                        subject.as_deref().unwrap_or("(no subject)"),
+                    );
+                    let now = now();
+                    let until = now + retention.as_secs();
+                    let blob_hash = BlobHash::from(&metadata.blob_hash);
+                    batch
+                        .set(
+                            BlobOp::Link {
+                                hash: blob_hash.clone(),
+                                to: BlobLink::Temporary { until },
+                            },
+                            vec![BlobLink::UNDELETE_LINK],
+                        )
+                        .set(
+                            BlobOp::Undelete {
+                                hash: blob_hash,
+                                until,
+                            },
+                            Archiver::new(DeletedItem {
+                                collection: Collection::Email as u8,
+                                size: root_part.offset_end.to_native(),
+                                deleted_at: now,
+                                description,
+                            })
+                            .serialize()
+                            .caused_by(trc::location!())?,
+                        );
+                }
+            }
+
             // SPDX-SnippetBegin
             // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
             // SPDX-License-Identifier: LicenseRef-SEL

@@ -50,6 +50,9 @@ use types::{
 };
 use utils::url_params::UrlParams;
 
+#[cfg(not(feature = "enterprise"))]
+use super::undelete::UndeleteHandler;
+
 // SPDX-SnippetBegin
 // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
 // SPDX-License-Identifier: LicenseRef-SEL
@@ -242,6 +245,11 @@ impl ManageStore for Server {
                     "data": (),
                 }))
                 .into_http_response())
+            }
+            #[cfg(not(feature = "enterprise"))]
+            (Some("undelete"), _, _, _) => {
+                access_token.assert_has_permission(Permission::Undelete)?;
+                self.handle_undelete_request(req, path, body, session).await
             }
             // SPDX-SnippetBegin
             // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
