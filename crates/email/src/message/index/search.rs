@@ -8,7 +8,8 @@ use crate::message::{
     index::{MAX_MESSAGE_PARTS, extractors::VisitTextArchived},
     metadata::{
         ArchivedMessageMetadata, ArchivedMetadataHeaderName, ArchivedMetadataHeaderValue,
-        ArchivedMetadataPartType, DecodedPartContent, MESSAGE_RECEIVED_MASK, MetadataHeaderName,
+        ArchivedMetadataPartType, DecodedPartContent, MESSAGE_HAS_ATTACHMENT, MESSAGE_RECEIVED_MASK,
+        MetadataHeaderName,
     },
 };
 use mail_parser::{DateTime, decoders::html::html_to_text, parsers::fields::thread::thread_name};
@@ -339,8 +340,13 @@ impl ArchivedMessageMetadata {
         #[cfg(feature = "test_mode")]
         document.set_unknown_language(default_language);
 
+        // Use the metadata flag computed during ingestion (metadata.rs)
+        // instead of checking whether the Attachment text field was populated.
+        // Binary attachments (PDFs, images) have no extractable text, so
+        // has_field(Attachment) would return false even though the email
+        // has attachments.
         let has_attachment =
-            document.has_field(&(SearchField::Email(EmailSearchField::Attachment)));
+            (self.rcvd_attach.to_native() & MESSAGE_HAS_ATTACHMENT) != 0;
 
         document.index_bool(EmailSearchField::HasAttachment, has_attachment);
         document
