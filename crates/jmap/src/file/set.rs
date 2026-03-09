@@ -442,6 +442,13 @@ fn update_file_node(
             (FileNodeProperty::Size, Value::Number(value)) => {
                 file_node.file.get_or_insert_default().size = value.cast_to_u64() as u32;
             }
+            (FileNodeProperty::Type, Value::Str(value))
+                if value.eq_ignore_ascii_case("directory") =>
+            {
+                // "directory" is not a MIME type — it indicates a folder.
+                // Folders are represented by file_node.file being None.
+                file_node.file = None;
+            }
             (FileNodeProperty::Type, Value::Str(value)) if (1..=30).contains(&value.len()) => {
                 file_node.file.get_or_insert_default().media_type = value.into_owned().into();
             }
