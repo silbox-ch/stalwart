@@ -35,6 +35,7 @@ use dkim::DkimManagement;
 use dns::DnsManagement;
 use http_proto::{request::fetch_body, *};
 use hyper::{Method, StatusCode, header};
+use utils::url_params::UrlParams;
 use jmap::api::{ToJmapHttpResponse, ToRequestError};
 use jmap_proto::error::request::RequestError;
 use log::LogManagement;
@@ -142,13 +143,23 @@ impl ManagementApi for Server {
                     // Validate the access token
                     access_token.assert_has_permission(Permission::ManageEncryption)?;
 
-                    self.handle_crypto_post(access_token, body).await
+                    // Resolve target account: own account or impersonate via ?account=email
+                    let target_id = self
+                        .resolve_crypto_account_id(req, &access_token)
+                        .await?;
+
+                    self.handle_crypto_post(target_id, body).await
                 }
                 ("crypto", &Method::GET) => {
                     // Validate the access token
                     access_token.assert_has_permission(Permission::ManageEncryption)?;
 
-                    self.handle_crypto_get(access_token).await
+                    // Resolve target account: own account or impersonate via ?account=email
+                    let target_id = self
+                        .resolve_crypto_account_id(req, &access_token)
+                        .await?;
+
+                    self.handle_crypto_get(target_id).await
                 }
                 ("auth", &Method::GET) => {
                     // Validate the access token
@@ -194,6 +205,31 @@ impl ManagementApi for Server {
             }
             // SPDX-SnippetEnd
             _ => Err(trc::ResourceEvent::NotFound.into_err()),
+        }
+    }
+}
+
+impl Server {
+    /// Resolve the target account ID for crypto operations.
+    /// If `?account=email` query parameter is present, resolve the email to an account ID
+    /// and require `Permission::Impersonate`. Otherwise, use the caller's own account.
+    async fn resolve_crypto_account_id(
+        &self,
+        req: &HttpRequest,
+        access_token: &AccessToken,
+    ) -> trc::Result<u32> {
+        let params = UrlParams::new(req.uri().query());
+        if let Some(account_email) = params.get("account") {
+            // Require Impersonate permission to manage another account's encryption
+            access_token.assert_has_permission(Permission::Impersonate)?;
+
+            // Resolve email to account ID
+            let email_owned = account_email.to_string();
+            self.email_to_id(self.directory(), account_email, 0)
+                .await?
+                .ok_or_else(|| manage::not_found(email_owned))
+        } else {
+            Ok(access_token.primary_id())
         }
     }
 }
