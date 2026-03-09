@@ -342,7 +342,12 @@ impl<'de> DeserializeArguments<'de> for FileNodeFilter {
                 *self = FileNodeFilter::HasParentId(map.next_value()?);
             },
             b"parentId" => {
-                *self = FileNodeFilter::ParentId(map.next_value()?);
+                if let Some(id) = map.next_value::<Option<MaybeInvalid<Id>>>()? {
+                    *self = FileNodeFilter::ParentId(id);
+                } else {
+                    // parentId: null means "root-level nodes" (no parent)
+                    *self = FileNodeFilter::HasParentId(false);
+                }
             },
             b"ancestorId" => {
                 *self = FileNodeFilter::AncestorId(map.next_value()?);
