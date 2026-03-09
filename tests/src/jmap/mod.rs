@@ -97,6 +97,7 @@ async fn jmap_tests() {
     mail::submission::test(&mut params).await;
     mail::crypto::test(&mut params).await;
     mail::antispam::test(&mut params).await;
+    mail::has_attachment::test(&mut params).await;
 
     core::event_source::test(&mut params).await;
     core::websocket::test(&mut params).await;

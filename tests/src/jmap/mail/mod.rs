@@ -11,6 +11,7 @@ pub mod copy;
 pub mod crypto;
 pub mod delivery;
 pub mod get;
+pub mod has_attachment;
 pub mod mailbox;
 pub mod not_found;
 pub mod parse;
