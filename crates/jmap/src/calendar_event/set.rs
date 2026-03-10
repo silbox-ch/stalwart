@@ -716,6 +716,19 @@ fn update_calendar_event<'x>(
     let mut entries = js_calendar_event.as_object_mut().unwrap();
 
     for (property, value) in updates.into_expanded_object() {
+        // Remap "recurrenceRules" (plural, RFC 9553) to RecurrenceRule
+        // (singular, calcard). Accept array and extract first element.
+        let (property, value) = if property.as_string_key() == Some("recurrenceRules") {
+            let value = if let Value::Array(arr) = value {
+                arr.into_iter().next().unwrap_or(Value::Null)
+            } else {
+                value
+            };
+            (Key::Property(JSCalendarProperty::RecurrenceRule), value)
+        } else {
+            (property, value)
+        };
+
         let Key::Property(property) = property else {
             return Err(SetError::invalid_properties()
                 .with_property(property.to_owned())

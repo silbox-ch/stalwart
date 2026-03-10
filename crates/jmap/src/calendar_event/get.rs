@@ -28,7 +28,7 @@ use groupware::{
 use jmap_proto::{
     method::get::{GetRequest, GetResponse},
     object::{JmapObjectId, calendar_event},
-    request::{IntoValid, reference::MaybeResultReference},
+    request::{IntoValid, MaybeInvalid, reference::MaybeResultReference},
 };
 use jmap_tools::{Key, Map, Value};
 use std::{str::FromStr, sync::Arc};
@@ -60,6 +60,15 @@ impl CalendarEventGet for Server {
         mut request: GetRequest<calendar_event::CalendarEvent>,
         access_token: &AccessToken,
     ) -> trc::Result<GetResponse<calendar_event::CalendarEvent>> {
+        // Remap "recurrenceRules" (plural, RFC 9553) to RecurrenceRule
+        // in the properties list so it survives unwrap_properties().
+        if let Some(MaybeResultReference::Value(props)) = &mut request.properties {
+            for prop in props.iter_mut() {
+                if matches!(prop, MaybeInvalid::Invalid(s) if s == "recurrenceRules") {
+                    *prop = MaybeInvalid::Value(JSCalendarProperty::RecurrenceRule);
+                }
+            }
+        }
         let return_all_properties = request
             .properties
             .as_ref()
@@ -578,6 +587,14 @@ impl CalendarEventGet for Server {
 
                         _ => {}
                     }
+                }
+
+                // Remap "recurrenceRule" (singular, calcard) to
+                // "recurrenceRules" (plural array, RFC 9553).
+                if let Some(value) =
+                    result.remove(&Key::Property(JSCalendarProperty::RecurrenceRule))
+                {
+                    result.insert("recurrenceRules", Value::Array(vec![value]));
                 }
 
                 response.list.push(result.into());
