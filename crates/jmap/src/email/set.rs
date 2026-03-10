@@ -822,10 +822,7 @@ impl EmailSet for Server {
             // Collect body/header properties for draft body update.
             // When non-empty, the email is a $draft and its body will be
             // replaced via an internal destroy+create cycle.
-            let mut draft_body_props: Vec<(
-                Key<'_, EmailProperty, EmailValue>,
-                Value<'_, EmailProperty, EmailValue>,
-            )> = Vec::new();
+            let mut draft_body_props = Vec::new();
 
             for (property, mut value) in object.into_expanded_object() {
                 if let Err(err) = response.resolve_self_references(&mut value) {
