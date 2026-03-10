@@ -84,10 +84,20 @@ impl Principal {
     }
     // SPDX-SnippetEnd
 
+    // SPDX-SnippetBegin
+    // SPDX-FileCopyrightText: 2025 Silbox CH
+    // SPDX-License-Identifier: AGPL-3.0-only
     #[cfg(not(feature = "enterprise"))]
     pub fn tenant(&self) -> Option<u32> {
-        None
+        self.data.iter().find_map(|item| {
+            if let PrincipalData::Tenant(tenant) = item {
+                Some(*tenant)
+            } else {
+                None
+            }
+        })
     }
+    // SPDX-SnippetEnd
 
     pub fn description(&self) -> Option<&str> {
         self.data.iter().find_map(|item| {
@@ -596,10 +606,14 @@ impl PrincipalSet {
     }
     // SPDX-SnippetEnd
 
+    // SPDX-SnippetBegin
+    // SPDX-FileCopyrightText: 2025 Silbox CH
+    // SPDX-License-Identifier: AGPL-3.0-only
     #[cfg(not(feature = "enterprise"))]
     pub fn tenant(&self) -> Option<u32> {
-        None
+        self.get_int(PrincipalField::Tenant).map(|v| v as u32)
     }
+    // SPDX-SnippetEnd
 
     pub fn description(&self) -> Option<&str> {
         self.get_str(PrincipalField::Description)

@@ -573,10 +573,9 @@ impl PrincipalManager for Server {
                                 | PrincipalField::MemberOf
                                 | PrincipalField::Members
                                 | PrincipalField::Lists
-                                | PrincipalField::Urls
                                 | PrincipalField::ExternalMembers
                                 | PrincipalField::Locale => (),
-                                PrincipalField::Picture => {
+                                PrincipalField::Picture | PrincipalField::Urls => {
                                     invalidate_logo_cache |=
                                         matches!(typ, Type::Domain | Type::Tenant);
                                 }

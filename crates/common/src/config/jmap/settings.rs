@@ -85,6 +85,8 @@ pub struct JmapConfig {
     pub undelete_retention: Option<Duration>,
     #[cfg(not(feature = "enterprise"))]
     pub branding_logo_url: Option<String>,
+    #[cfg(not(feature = "enterprise"))]
+    pub branding_assets_url: Option<String>,
 
     pub index_batch_size: usize,
     pub index_fields: AHashMap<SearchIndex, AHashSet<SearchField>>,
@@ -328,6 +330,11 @@ impl JmapConfig {
             branding_logo_url: config
                 .value("branding.logo-url")
                 .map(|s| s.to_string()),
+            #[cfg(not(feature = "enterprise"))]
+            branding_assets_url: config.value("branding.assets-url").map(|s| {
+                let s = s.to_string();
+                if s.ends_with('/') { s } else { format!("{s}/") }
+            }),
             http_use_forwarded: config.property("http.use-x-forwarded").unwrap_or(false),
             http_headers,
             push_attempt_interval: config

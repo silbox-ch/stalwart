@@ -621,17 +621,25 @@ impl ParseHttp for Server {
                 }
                 _ => (),
             },
+            // SPDX-SnippetBegin
+            // SPDX-FileCopyrightText: 2025 Silbox CH
+            // SPDX-License-Identifier: AGPL-3.0-only
             #[cfg(not(feature = "enterprise"))]
-            "logo.svg" => {
+            path_segment
+                if common::branding::BrandingAsset::from_path(path_segment).is_some() =>
+            {
                 self.is_http_anonymous_request_allowed(&session.remote_ip)
                     .await?;
+                let asset =
+                    common::branding::BrandingAsset::from_path(path_segment).unwrap();
                 match self
-                    .resolve_logo(
+                    .resolve_branding_asset(
                         req.headers()
                             .get(header::HOST)
                             .and_then(|h| h.to_str().ok())
                             .map(|h| h.rsplit_once(':').map_or(h, |(h, _)| h))
                             .unwrap_or_default(),
+                        asset,
                     )
                     .await
                 {
@@ -644,11 +652,13 @@ impl ParseHttp for Server {
                     }
                 }
 
-                let resource = self.inner.data.webadmin.get("logo.svg").await?;
+                let resource =
+                    self.inner.data.webadmin.get(path_segment).await?;
                 if !resource.is_empty() {
                     return Ok(resource.into_http_response());
                 }
             }
+            // SPDX-SnippetEnd
             // SPDX-SnippetBegin
             // SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
             // SPDX-License-Identifier: LicenseRef-SEL
