@@ -819,6 +819,14 @@ impl EmailSet for Server {
                 .caused_by(trc::location!())?;
             let mut new_data = data.inner.to_builder();
 
+            // Collect body/header properties for draft body update.
+            // When non-empty, the email is a $draft and its body will be
+            // replaced via an internal destroy+create cycle.
+            let mut draft_body_props: Vec<(
+                Key<'_, EmailProperty, EmailValue>,
+                Value<'_, EmailProperty, EmailValue>,
+            )> = Vec::new();
+
             for (property, mut value) in object.into_expanded_object() {
                 if let Err(err) = response.resolve_self_references(&mut value) {
                     response.not_updated.append(id, err);
@@ -868,11 +876,486 @@ impl EmailSet for Server {
                             }
                         }
                     }
+                    // Body and header properties: allowed only on $draft emails.
+                    // Collected for later processing as an atomic destroy+create.
+                    (
+                        property
+                        @
+                        Key::Property(
+                            EmailProperty::BodyValues
+                            | EmailProperty::TextBody
+                            | EmailProperty::HtmlBody
+                            | EmailProperty::Attachments
+                            | EmailProperty::BodyStructure
+                            | EmailProperty::Subject
+                            | EmailProperty::From
+                            | EmailProperty::To
+                            | EmailProperty::Cc
+                            | EmailProperty::Bcc
+                            | EmailProperty::ReplyTo
+                            | EmailProperty::Sender
+                            | EmailProperty::SentAt
+                            | EmailProperty::MessageId
+                            | EmailProperty::InReplyTo
+                            | EmailProperty::References,
+                        ),
+                        value,
+                    ) => {
+                        // Verify the email is a draft
+                        if !data
+                            .inner
+                            .keywords
+                            .iter()
+                            .any(|k| matches!(k, ArchivedKeyword::Draft))
+                        {
+                            response.invalid_property_update(id, property.into_owned());
+                            continue 'update;
+                        }
+                        draft_body_props.push((property, value));
+                    }
+                    (property @ Key::Property(EmailProperty::Header(_)), value) => {
+                        if !data
+                            .inner
+                            .keywords
+                            .iter()
+                            .any(|k| matches!(k, ArchivedKeyword::Draft))
+                        {
+                            response.invalid_property_update(id, property.into_owned());
+                            continue 'update;
+                        }
+                        draft_body_props.push((property, value));
+                    }
                     (property, _) => {
                         response.invalid_property_update(id, property.into_owned());
                         continue 'update;
                     }
                 }
+            }
+
+            // Draft body update: rebuild the message via destroy+create
+            if !draft_body_props.is_empty() {
+                // Build new message from body/header properties
+                let has_body_structure = draft_body_props.iter().any(|(k, _)| {
+                    matches!(k, Key::Property(EmailProperty::BodyStructure))
+                });
+                let mut builder = MessageBuilder::new();
+
+                // Parse body values first (needed by partId references)
+                let body_values_idx = draft_body_props
+                    .iter()
+                    .position(|(k, _)| matches!(k, Key::Property(EmailProperty::BodyValues)));
+                let body_values = body_values_idx
+                    .map(|idx| draft_body_props.remove(idx))
+                    .and_then(|(_, v)| v.into_object())
+                    .and_then(|obj| {
+                        let mut values = HashMap::with_capacity(obj.len());
+                        for (key, value) in obj.into_vec() {
+                            let bv_id = key.into_string();
+                            if let Value::Object(mut bv) = value {
+                                values.insert(
+                                    bv_id,
+                                    bv.remove(&Key::Property(EmailProperty::Value))?
+                                        .into_string()?,
+                                );
+                            } else {
+                                return None;
+                            }
+                        }
+                        Some(values)
+                    });
+
+                let mut size_attachments = 0usize;
+
+                for (property, value) in draft_body_props {
+                    let Key::Property(property) = property else {
+                        continue;
+                    };
+
+                    match (property, value) {
+                        (
+                            header @ (EmailProperty::MessageId
+                            | EmailProperty::InReplyTo
+                            | EmailProperty::References),
+                            Value::Array(values),
+                        ) => {
+                            builder = builder.header(
+                                header.as_rfc_header(),
+                                MessageId {
+                                    id: values
+                                        .into_iter()
+                                        .filter_map(|value| value.into_string())
+                                        .collect(),
+                                },
+                            );
+                        }
+                        (
+                            header @ (EmailProperty::Sender
+                            | EmailProperty::From
+                            | EmailProperty::To
+                            | EmailProperty::Cc
+                            | EmailProperty::Bcc
+                            | EmailProperty::ReplyTo),
+                            value,
+                        ) => {
+                            if let Some(addresses) = value.try_into_address_list() {
+                                builder = builder
+                                    .header(header.as_rfc_header(), Address::List(addresses));
+                            } else {
+                                response.not_updated.append(
+                                    id,
+                                    SetError::invalid_properties()
+                                        .with_property(header)
+                                        .with_description("Invalid address value."),
+                                );
+                                continue 'update;
+                            }
+                        }
+                        (EmailProperty::Subject, Value::Str(value)) => {
+                            builder = builder.subject(value);
+                        }
+                        (EmailProperty::SentAt, Value::Element(EmailValue::Date(value))) => {
+                            builder = builder.date(Date::new(value.timestamp()));
+                        }
+                        (
+                            property @ (EmailProperty::TextBody
+                            | EmailProperty::HtmlBody
+                            | EmailProperty::Attachments
+                            | EmailProperty::BodyStructure),
+                            value,
+                        ) => {
+                            // Parse body parts (simplified from CREATE path)
+                            let (values, expected_content_type) = match property {
+                                EmailProperty::BodyStructure => (vec![value], None),
+                                EmailProperty::TextBody | EmailProperty::HtmlBody
+                                    if !has_body_structure =>
+                                {
+                                    let values = value.into_array().unwrap_or_default();
+                                    if values.len() <= 1 {
+                                        (
+                                            values,
+                                            Some(match property {
+                                                EmailProperty::TextBody => "text/plain",
+                                                EmailProperty::HtmlBody => "text/html",
+                                                _ => unreachable!(),
+                                            }),
+                                        )
+                                    } else {
+                                        response.not_updated.append(
+                                            id,
+                                            SetError::invalid_properties()
+                                                .with_property(property)
+                                                .with_description("Only one part is allowed."),
+                                        );
+                                        continue 'update;
+                                    }
+                                }
+                                EmailProperty::Attachments if !has_body_structure => {
+                                    (value.into_array().unwrap_or_default(), None)
+                                }
+                                _ => {
+                                    response.not_updated.append(
+                                        id,
+                                        SetError::invalid_properties()
+                                            .with_properties([
+                                                property,
+                                                EmailProperty::BodyStructure,
+                                            ])
+                                            .with_description(
+                                                "Cannot set both properties on a same request.",
+                                            ),
+                                    );
+                                    continue 'update;
+                                }
+                            };
+
+                            let mut parts = Vec::new();
+                            for value in values {
+                                let mut blob_id = None;
+                                let mut part_id = None;
+                                let mut content_type = None;
+                                let mut content_disposition = None;
+                                let mut name = None;
+                                let mut charset = None;
+                                let mut headers: Vec<(Cow<str>, HeaderType)> = Vec::new();
+
+                                if let Some(obj) = value.into_object() {
+                                    for (body_property, value) in obj.into_vec() {
+                                        let Key::Property(body_property) = body_property
+                                        else {
+                                            continue;
+                                        };
+                                        match (body_property, value) {
+                                            (EmailProperty::Type, Value::Str(v)) => {
+                                                content_type = v.into_owned().into();
+                                            }
+                                            (EmailProperty::PartId, Value::Str(v)) => {
+                                                part_id = v.into_owned().into();
+                                            }
+                                            (
+                                                EmailProperty::BlobId,
+                                                Value::Element(EmailValue::BlobId(v)),
+                                            ) => {
+                                                blob_id = v.into();
+                                            }
+                                            (EmailProperty::Disposition, Value::Str(v)) => {
+                                                content_disposition = v.into_owned().into();
+                                            }
+                                            (EmailProperty::Name, Value::Str(v)) => {
+                                                name = v.into_owned().into();
+                                            }
+                                            (EmailProperty::Charset, Value::Str(v)) => {
+                                                charset = v.into_owned().into();
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+
+                                let ct =
+                                    content_type.unwrap_or_else(|| "text/plain".to_string());
+                                let is_multipart = ct.starts_with("multipart/");
+
+                                if expected_content_type
+                                    .as_ref()
+                                    .is_some_and(|v| v != &ct)
+                                {
+                                    response.not_updated.append(
+                                        id,
+                                        SetError::invalid_properties()
+                                            .with_property((property, EmailProperty::Type))
+                                            .with_description(format!(
+                                                "Expected one body part of type \"{}\"",
+                                                expected_content_type.unwrap()
+                                            )),
+                                    );
+                                    continue 'update;
+                                }
+
+                                let mut ct_header = ContentType::new(ct);
+                                if !is_multipart {
+                                    if let Some(cs) = charset {
+                                        if part_id.is_none() {
+                                            ct_header
+                                                .attributes
+                                                .push(("charset".into(), cs.into()));
+                                        }
+                                    } else if part_id.is_some() {
+                                        ct_header
+                                            .attributes
+                                            .push(("charset".into(), "utf-8".into()));
+                                    }
+                                    match (content_disposition, name) {
+                                        (Some(d), Some(f)) => {
+                                            headers.push((
+                                                "Content-Disposition".into(),
+                                                ContentType::new(d)
+                                                    .attribute("filename", f)
+                                                    .into(),
+                                            ));
+                                        }
+                                        (Some(d), None) => {
+                                            headers.push((
+                                                "Content-Disposition".into(),
+                                                ContentType::new(d).into(),
+                                            ));
+                                        }
+                                        (None, Some(f)) => {
+                                            ct_header
+                                                .attributes
+                                                .push(("name".into(), f.into()));
+                                        }
+                                        (None, None) => {}
+                                    }
+                                }
+                                headers.push(("Content-Type".into(), ct_header.into()));
+
+                                let contents = if !is_multipart {
+                                    if let Some(bid) = blob_id {
+                                        match self
+                                            .blob_download(&bid, access_token)
+                                            .await?
+                                        {
+                                            Some(c) => BodyPart::Binary(c.into()),
+                                            None => {
+                                                response.not_updated.append(
+                                                    id,
+                                                    SetError::new(SetErrorType::BlobNotFound)
+                                                        .with_description(format!(
+                                                            "blobId {bid} does not exist."
+                                                        )),
+                                                );
+                                                continue 'update;
+                                            }
+                                        }
+                                    } else if let Some(pid) = part_id {
+                                        if let Some(c) =
+                                            body_values.as_ref().and_then(|bv| bv.get(&pid))
+                                        {
+                                            BodyPart::Text(c.as_ref().into())
+                                        } else {
+                                            response.not_updated.append(
+                                                id,
+                                                SetError::invalid_properties()
+                                                    .with_property((
+                                                        property,
+                                                        EmailProperty::PartId,
+                                                    ))
+                                                    .with_description(format!(
+                                                        "Missing body value for partId {pid:?}"
+                                                    )),
+                                            );
+                                            continue 'update;
+                                        }
+                                    } else {
+                                        BodyPart::Text("".into())
+                                    }
+                                } else {
+                                    BodyPart::Multipart(vec![])
+                                };
+
+                                let part = MimePart { headers, contents };
+                                if !is_multipart {
+                                    size_attachments += part.size();
+                                    if self.core.jmap.mail_attachments_max_size > 0
+                                        && size_attachments
+                                            > self.core.jmap.mail_attachments_max_size
+                                    {
+                                        response.not_updated.append(
+                                            id,
+                                            SetError::invalid_properties()
+                                                .with_property(property)
+                                                .with_description(format!(
+                                                    "Message exceeds maximum size of {} bytes.",
+                                                    self.core.jmap.mail_attachments_max_size
+                                                )),
+                                        );
+                                        continue 'update;
+                                    }
+                                }
+                                parts.push(part);
+                            }
+
+                            match property {
+                                EmailProperty::TextBody => {
+                                    builder.text_body = parts.pop();
+                                }
+                                EmailProperty::HtmlBody => {
+                                    builder.html_body = parts.pop();
+                                }
+                                EmailProperty::Attachments => {
+                                    builder.attachments = parts.into();
+                                }
+                                _ => {
+                                    builder.body = parts.pop();
+                                }
+                            }
+                        }
+                        (EmailProperty::Header(header), value) => {
+                            match builder.build_header(header, value) {
+                                Ok(b) => {
+                                    builder = b;
+                                }
+                                Err(header) => {
+                                    response.not_updated.append(
+                                        id,
+                                        SetError::invalid_properties()
+                                            .with_property(EmailProperty::Header(header))
+                                            .with_description("Invalid header value."),
+                                    );
+                                    continue 'update;
+                                }
+                            }
+                        }
+                        (_, Value::Null) => {}
+                        _ => {}
+                    }
+                }
+
+                // Check message is not empty
+                if builder.headers.is_empty()
+                    && builder.body.is_none()
+                    && builder.html_body.is_none()
+                    && builder.text_body.is_none()
+                    && builder.attachments.is_none()
+                {
+                    response.not_updated.append(
+                        id,
+                        SetError::invalid_properties().with_description(
+                            "Message has to have at least one header or body part.",
+                        ),
+                    );
+                    continue 'update;
+                }
+
+                // Build raw message
+                let mut raw_message = Vec::with_capacity((4 * size_attachments / 3) + 1024);
+                builder.write_to(&mut raw_message).unwrap_or_default();
+
+                // Use mailboxes and keywords from new_data (includes any
+                // changes from mailboxIds/keywords properties in the same update)
+                let mailbox_ids: Vec<u32> =
+                    new_data.mailboxes.iter().map(|m| m.mailbox_id).collect();
+                let keywords: Vec<Keyword> = new_data.keywords.clone();
+
+                // Ingest new message
+                match self
+                    .email_ingest(IngestEmail {
+                        raw_message: &raw_message,
+                        message: MessageParser::new().parse(&raw_message),
+                        blob_hash: None,
+                        access_token: import_access_token
+                            .as_deref()
+                            .unwrap_or(access_token),
+                        mailbox_ids,
+                        keywords,
+                        received_at: None,
+                        source: IngestSource::Jmap {
+                            train_classifier: false,
+                        },
+                        session_id: session.session_id,
+                    })
+                    .await
+                {
+                    Ok(message) => {
+                        last_change_id = message.change_id.into();
+
+                        // Destroy old document
+                        let mut destroy_batch = BatchBuilder::new();
+                        let mut destroy_ids = RoaringBitmap::new();
+                        destroy_ids.insert(document_id);
+                        self.emails_delete(
+                            account_id,
+                            access_token.tenant_id(),
+                            &mut destroy_batch,
+                            destroy_ids,
+                        )
+                        .await?;
+                        if !destroy_batch.is_empty() {
+                            self.commit_batch(destroy_batch)
+                                .await
+                                .caused_by(trc::location!())?;
+                            self.notify_task_queue();
+                        }
+
+                        // Report updated with new server-set properties
+                        response.updated.append(
+                            id,
+                            Some(ingested_into_object(message).into()),
+                        );
+                    }
+                    Err(err)
+                        if err.matches(trc::EventType::Limit(trc::LimitEvent::Quota)) =>
+                    {
+                        response.not_updated.append(
+                            id,
+                            SetError::new(SetErrorType::OverQuota)
+                                .with_description("You have exceeded your disk quota."),
+                        );
+                    }
+                    Err(err) => return Err(err),
+                }
+
+                continue 'update;
             }
 
             let has_keyword_changes = new_data.has_keyword_changes(data.inner);
