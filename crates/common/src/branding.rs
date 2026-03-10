@@ -36,6 +36,8 @@ impl BrandingAsset {
             "favicon.svg" => Some(Self::FaviconSvg),
             "apple-touch-icon.png" => Some(Self::AppleTouchIcon),
             "manifest.json" => Some(Self::Manifest),
+            // Webadmin bundles use hashed filenames (e.g. favicon-cfb706b7132e0fd2.ico)
+            _ if path.starts_with("favicon-") && path.ends_with(".ico") => Some(Self::FaviconIco),
             _ => None,
         }
     }
